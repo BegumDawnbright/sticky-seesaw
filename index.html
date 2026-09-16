@@ -221,8 +221,8 @@ const HAND_REST_Y = ROWS * CELL + 0.45;
 const HAND_Z = CELL * 0.35;
 const clock = new THREE.Clock();
 
-const GOO_CLEAN = new THREE.Color(0xff9ec2);
-const GOO_DIRTY = new THREE.Color(0x76852f);
+const GOO_CLEAN = new THREE.Color(0xff9ec2).convertSRGBToLinear();
+const GOO_DIRTY = new THREE.Color(0x76852f).convertSRGBToLinear();
 
 /* =============================================================== helpers */
 const ease = {
@@ -272,10 +272,15 @@ function roundedBox(size, radius, seg) {
 
 let BLOCK_GEO, MATS;
 
+/* Renk yönetimi: renderer sRGB'ye encode ettiği için materyal/ışık renkleri
+   LİNEER alanda olmalı. Hex değerleri sRGB olarak yazıldığından her birini
+   çevirmezsek renkler iki kez açılır — pastel ve aşırı parlak görünürler. */
+const srgb = hex => new THREE.Color(hex).convertSRGBToLinear();
+
 /* ================================================================= scene */
 function initScene() {
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x191534, 24, 50);
+  scene.fog = new THREE.Fog(srgb(0x2a2350), 24, 50);
 
   camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
 
@@ -293,15 +298,15 @@ function initScene() {
     new THREE.SphereGeometry(60, 24, 16),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false,
-      uniforms: { top: { value: new THREE.Color(0x3a2a6b) }, bot: { value: new THREE.Color(0x120f24) } },
+      uniforms: { top: { value: srgb(0x5b46a6) }, bot: { value: srgb(0x201a3c) } },
       vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
       fragmentShader: 'varying float h; uniform vec3 top; uniform vec3 bot; void main(){ gl_FragColor = vec4(mix(bot, top, smoothstep(-0.35,0.75,h)), 1.0); }'
     })
   );
   scene.add(bg);
 
-  scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x2a1f4a, 0.42));
-  const key = new THREE.DirectionalLight(0xffffff, 1.45);
+  scene.add(new THREE.HemisphereLight(srgb(0xcfd8ff), srgb(0x3d2f6b), 0.75));
+  const key = new THREE.DirectionalLight(0xffffff, 1.6);
   key.position.set(5, 14, 8);
   key.castShadow = true;
   key.shadow.mapSize.set(1024, 1024);
@@ -311,7 +316,7 @@ function initScene() {
   key.shadow.camera.near = 1;  key.shadow.camera.far = 42;
   key.shadow.bias = -0.0015;
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff8ad0, 0.4);
+  const rim = new THREE.DirectionalLight(srgb(0xff8ad0), 0.55);
   rim.position.set(-7, 5, -6);
   scene.add(rim);
 
@@ -320,8 +325,8 @@ function initScene() {
 
   BLOCK_GEO = roundedBox(CELL * 0.88, CELL * 0.2, 5);
   MATS = COLORS.map(c => new THREE.MeshStandardMaterial({
-    color: c.hex, roughness: 0.34, metalness: 0.0,
-    emissive: new THREE.Color(c.hex).multiplyScalar(0.05)
+    color: srgb(c.hex), roughness: 0.34, metalness: 0.0,
+    emissive: srgb(c.hex).multiplyScalar(0.05)
   }));
 
   buildBoardFrame();
@@ -339,7 +344,7 @@ function buildBoardFrame() {
   const w = COLS * CELL;
 
   const base = new THREE.Mesh(roundedBox(1, 0.2, 4),
-    new THREE.MeshStandardMaterial({ color: 0x2b2350, roughness: 0.75 }));
+    new THREE.MeshStandardMaterial({ color: srgb(0x3d3278), roughness: 0.75 }));
   base.scale.set(w + 0.9, 0.7, CELL + 0.9);
   base.position.y = -0.35;
   base.castShadow = true;
@@ -347,7 +352,7 @@ function buildBoardFrame() {
   boardGroup.add(base);
 
   const lineMat = new THREE.MeshStandardMaterial({
-    color: 0x4a3f7d, roughness: 0.9, transparent: true, opacity: 0.4 });
+    color: srgb(0x6558ab), roughness: 0.9, transparent: true, opacity: 0.4 });
   for (let c = 0; c <= COLS; c++) {
     const l = new THREE.Mesh(new THREE.BoxGeometry(0.045, ROWS * CELL, 0.045), lineMat);
     l.position.set(colX(0) - CELL / 2 + c * CELL, ROWS * CELL / 2, -CELL / 2 + 0.05);
@@ -356,7 +361,7 @@ function buildBoardFrame() {
 
   const back = new THREE.Mesh(
     new THREE.PlaneGeometry(w + 0.6, ROWS * CELL + 0.4),
-    new THREE.MeshStandardMaterial({ color: 0x241d47, roughness: 1 }));
+    new THREE.MeshStandardMaterial({ color: srgb(0x372c6b), roughness: 1 }));
   back.position.set(0, (ROWS * CELL) / 2, -CELL * 0.75);
   back.receiveShadow = true;
   boardGroup.add(back);
@@ -364,7 +369,7 @@ function buildBoardFrame() {
 
 /* board'un üstünde durduğu mil — eğilmenin görsel gerekçesi (sahnede sabit) */
 function buildPivot() {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8e83c9, roughness: 0.4, metalness: 0.3 });
+  const mat = new THREE.MeshStandardMaterial({ color: srgb(0xa89dde), roughness: 0.4, metalness: 0.3 });
 
   const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.5, 18), mat);
   pin.rotation.x = Math.PI / 2;
@@ -378,7 +383,7 @@ function buildPivot() {
   scene.add(post);
 
   const foot = new THREE.Mesh(roundedBox(1, 0.2, 4),
-    new THREE.MeshStandardMaterial({ color: 0x5c52a0, roughness: 0.7 }));
+    new THREE.MeshStandardMaterial({ color: srgb(0x7466c4), roughness: 0.7 }));
   foot.scale.set(3.4, 0.45, 1.8);
   foot.position.set(0, -2.45, 0);
   foot.receiveShadow = true;
@@ -392,7 +397,7 @@ function buildBucket() {
   bucketGroup.position.set(BUCKET_POS.x, BUCKET_POS.y, BUCKET_POS.z);
   scene.add(bucketGroup);
 
-  const metal = new THREE.MeshStandardMaterial({ color: 0x9aa6d8, roughness: 0.35, metalness: 0.45 });
+  const metal = new THREE.MeshStandardMaterial({ color: srgb(0x9aa6d8), roughness: 0.35, metalness: 0.45 });
 
   const pail = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.6, 1.05, 22, 1, true), metal);
   pail.material.side = THREE.DoubleSide;
@@ -417,7 +422,7 @@ function buildBucket() {
   /* içindeki çamur — kir arttıkça yükselip koyulaşır */
   bucketSludge = new THREE.Mesh(
     new THREE.CircleGeometry(0.72, 22),
-    new THREE.MeshStandardMaterial({ color: 0x6f7c33, roughness: 0.25, metalness: 0.1 })
+    new THREE.MeshStandardMaterial({ color: srgb(0x6f7c33), roughness: 0.25, metalness: 0.1 })
   );
   bucketSludge.rotation.x = -Math.PI / 2;
   bucketSludge.position.y = 0.1;
@@ -436,7 +441,7 @@ function buildHand() {
   hand = new THREE.Group();
 
   const skin = new THREE.MeshStandardMaterial({
-    color: 0xffd9a8, roughness: 0.55, emissive: 0x2a1405, emissiveIntensity: 0.35 });
+    color: srgb(0xffd9a8), roughness: 0.55, emissive: srgb(0x2a1405), emissiveIntensity: 0.35 });
   gooMat = new THREE.MeshStandardMaterial({
     color: GOO_CLEAN.clone(), roughness: 0.2, transparent: true, opacity: 0.92 });
 
@@ -471,7 +476,7 @@ function buildHand() {
 
   const armGeo = new THREE.CylinderGeometry(0.26, 0.3, 1, 14, 1, true);
   armGeo.translate(0, 0.5, 0);
-  armMesh = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xffc98c, roughness: 0.6 }));
+  armMesh = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: srgb(0xffc98c), roughness: 0.6 }));
   armMesh.castShadow = true;
   scene.add(armMesh);
 
@@ -1004,7 +1009,7 @@ let particleGeo;
 function spawnParticles(pos, hex, parent) {
   if (!particleGeo) particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
   const host = parent || boardGroup;
-  const mat = new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 0.5 });
+  const mat = new THREE.MeshStandardMaterial({ color: srgb(hex), emissive: srgb(hex), emissiveIntensity: 0.5 });
   for (let i = 0; i < 9; i++) {
     const m = new THREE.Mesh(particleGeo, mat);
     m.position.copy(pos);
@@ -1200,7 +1205,7 @@ function animate() {
 
   /* kova el kirlendikçe daha davetkâr görünsün */
   bucketSludge.position.y = -0.2 + grime * 0.34;
-  bucketSludge.material.color.setHSL(0.22, 0.45, 0.16 + grime * 0.12);
+  bucketSludge.material.color.setHSL(0.22, 0.45, 0.16 + grime * 0.12).convertSRGBToLinear();
   bucketGroup.position.y = BUCKET_POS.y + (grime >= 0.5 ? Math.sin(t * 5) * 0.05 : 0);
 
   updateDropBadge();
