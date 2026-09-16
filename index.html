@@ -278,11 +278,13 @@ let BLOCK_GEO, MATS;
 const srgb = hex => new THREE.Color(hex).convertSRGBToLinear();
 
 /* ================================================================= scene */
+let bg = null;
 function initScene() {
   scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(srgb(0x2a2350), 24, 50);
+  /* Sis kaldırıldı: dar ekranda kamera ~34 birime çekilince board sisin içinde
+     kalıp kararıyordu. Board sabit mesafede olduğu için sis zaten gereksizdi. */
 
-  camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+  camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 300);
 
   renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -294,13 +296,15 @@ function initScene() {
 
   raycaster = new THREE.Raycaster();
 
-  const bg = new THREE.Mesh(
+  bg = new THREE.Mesh(
     new THREE.SphereGeometry(60, 24, 16),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false,
       uniforms: { top: { value: srgb(0x5b46a6) }, bot: { value: srgb(0x201a3c) } },
-      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader: 'varying float h; uniform vec3 top; uniform vec3 bot; void main(){ gl_FragColor = vec4(mix(bot, top, smoothstep(-0.35,0.75,h)), 1.0); }'
+      /* yükseklik fragment'te hesaplanır; vertex'te hesaplanırsa düşük poli kürenin
+         köşeleri gradyanda keskin kenar/leke olarak görünüyordu */
+      vertexShader: 'varying vec3 vPos; void main(){ vPos = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'varying vec3 vPos; uniform vec3 top; uniform vec3 bot; void main(){ float h = normalize(vPos).y; gl_FragColor = vec4(mix(bot, top, smoothstep(-0.55,0.75,h)), 1.0); }'
     })
   );
   scene.add(bg);
@@ -514,6 +518,9 @@ function layoutCamera() {
   const cy = boardH / 2 - 2.6;
   camera.position.set(0, cy + dist * 0.15, dist * 0.99);
   camera.lookAt(0, cy - 0.3, 0);
+  /* arka plan küresi kamerayla birlikte gider; kamera çok geri çekilse de
+     kürenin dışına/uzak plan dışına taşmaz */
+  if (bg) bg.position.copy(camera.position);
 }
 
 function onResize() {
