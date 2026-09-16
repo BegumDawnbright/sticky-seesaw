@@ -241,7 +241,8 @@ function updateTweens(dt) {
   for (let i = tweens.length - 1; i >= 0; i--) {
     const tw = tweens[i];
     tw.t += dt;
-    const k = Math.min(1, tw.t / tw.dur);
+    /* dur=0 ise t/dur NaN olur ve tween asla tamamlanmaz — sıfır süreyi anında bitir */
+    const k = tw.dur > 0 ? Math.min(1, tw.t / tw.dur) : 1;
     tw.fn(tw.easing(k), k);
     if (k >= 1) { tweens.splice(i, 1); tw.res(); }
   }
@@ -626,18 +627,43 @@ async function dropInBoard() {
 /* --- her hamleden sonra tepeden rastgele bir sütuna yeni blok düşer ---
    Blok arzını yeniler (board asla kilitlenmez) ve ağırlığı rastgele bozar,
    yani dengeyi sürekli sen toparlamak zorunda kalırsın. */
-function pickDropColumn() {
-  const open = [];
-  for (let c = 0; c < COLS; c++) if (columns[c].length < ROWS) open.push(c);
-  if (!open.length) return -1;
-  return open[(Math.random() * open.length) | 0];
+/* Yağacak bloğun rengi: bir renkten 1-2 blok kalmışsa o bloklar tek başına
+   asla patlayamaz — board'un bitirilebilir kalması için o rengi tamamla. */
+function pickDropColor() {
+  const count = new Array(COLORS.length).fill(0);
+  for (let c = 0; c < COLS; c++) for (const b of columns[c]) count[b.color]++;
+
+  const orphans = [];
+  for (let k = 0; k < PALETTE; k++) if (count[k] > 0 && count[k] < 3) orphans.push(k);
+
+  if (orphans.length) {
+    /* 2 kalmış renk önce gelsin — tek blokla patlar */
+    orphans.sort((a, b) => count[b] - count[a]);
+    return { color: orphans[0], spread: true };
+  }
+  return { color: (Math.random() * PALETTE) | 0, spread: false };
+}
+
+/* spread=true ise blok, o renkten blok BULUNMAYAN bir sütuna düşer; böylece
+   oyuncu onları bir araya getirmek için hamle yapmak zorunda kalır. */
+function pickDropColumn(color, spread) {
+  const open = [], preferred = [];
+  for (let c = 0; c < COLS; c++) {
+    if (columns[c].length >= ROWS) continue;
+    open.push(c);
+    if (spread && !columns[c].some(b => b.color === color)) preferred.push(c);
+  }
+  const pool = preferred.length ? preferred : open;
+  if (!pool.length) return -1;
+  return pool[(Math.random() * pool.length) | 0];
 }
 
 async function dropNewBlock() {
-  const c = pickDropColumn();
+  const pick = pickDropColor();
+  const c = pickDropColumn(pick.color, pick.spread);
   if (c < 0) { endGame(false, 'overflow'); return; }
 
-  const b = makeBlock((Math.random() * PALETTE) | 0);
+  const b = makeBlock(pick.color);
   const i = columns[c].length;
   columns[c].push(b);
   blocksLeft++;
