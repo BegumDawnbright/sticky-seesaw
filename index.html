@@ -534,7 +534,7 @@ function makeBlock(colorIdx) {
 
 /* Çözülebilirlik kuralı: her renkten blok sayısı 3'ün katı olmalı,
    yoksa o renkten 1-2 blok artar ve asla patlayamaz. */
-function buildSolvableGrid() {
+function randomGrid() {
   const total = COLS * START_ROWS;
   const units = Math.floor(total / 3);
   const usable = Math.min(PALETTE, units);
@@ -556,20 +556,50 @@ function buildSolvableGrid() {
     grid.push([]);
     for (let i = 0; i < START_ROWS; i++) grid[c].push(pool[c * START_ROWS + i]);
   }
+  return grid;
+}
 
-  /* hazır eşleşmeleri TAKAS ile boz — renk sayıları korunur */
-  for (let guard = 0; guard < 400; guard++) {
+function groupedCells(grid) {
+  return groupsOf(grid).reduce((n, g) => n + g.length, 0);
+}
+
+/* Hazır eşleşmeleri TAKASLA boz — renk sayıları korunsun diye renk değiştirmiyoruz.
+   Rastgele takas bazen yakınsamıyordu; burada yalnızca durumu İYİLEŞTİREN takaslar
+   kabul ediliyor, tıkanınca rastgele bir sarsma yapılıyor. */
+function repairGrid(grid) {
+  for (let pass = 0; pass < 400; pass++) {
     const gs = groupsOf(grid);
-    if (!gs.length) break;
-    for (const g of gs) {
-      const [c, i] = g[(Math.random() * g.length) | 0];
-      let c2, i2, tries = 0;
-      do { c2 = (Math.random() * COLS) | 0; i2 = (Math.random() * START_ROWS) | 0; tries++; }
-      while (tries < 60 && grid[c2][i2] === grid[c][i]);
+    if (!gs.length) return true;
+
+    const before = groupedCells(grid);
+    const g = gs[0];
+    const [c, i] = g[(Math.random() * g.length) | 0];
+
+    let improved = false;
+    for (let c2 = 0; c2 < COLS && !improved; c2++) {
+      for (let i2 = 0; i2 < START_ROWS; i2++) {
+        if (grid[c2][i2] === grid[c][i]) continue;
+        let t = grid[c][i]; grid[c][i] = grid[c2][i2]; grid[c2][i2] = t;
+        if (groupedCells(grid) < before) { improved = true; break; }
+        t = grid[c][i]; grid[c][i] = grid[c2][i2]; grid[c2][i2] = t;   // geri al
+      }
+    }
+
+    if (!improved) {   // yerel tıkanma — rastgele sars
+      const c2 = (Math.random() * COLS) | 0, i2 = (Math.random() * START_ROWS) | 0;
       const t = grid[c][i]; grid[c][i] = grid[c2][i2]; grid[c2][i2] = t;
     }
   }
-  return grid;
+  return groupsOf(grid).length === 0;
+}
+
+function buildSolvableGrid() {
+  let grid;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    grid = randomGrid();
+    if (repairGrid(grid)) return grid;
+  }
+  return grid;   // pratikte buraya düşülmez
 }
 
 /* Seviye merdiveni — her seviye biraz daha hızlı yağar, daha çok renk içerir,
