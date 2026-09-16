@@ -78,6 +78,13 @@
     border:2px solid rgba(255,255,255,.14); border-radius:14px;
     padding:5px 12px; box-shadow:0 5px 0 rgba(0,0,0,.25);
   }
+  /* dar ekranda (iframe, telefon) denge barı ve rozet chip'lerin üstüne binmesin:
+     chip satırının altına indir */
+  @media (max-width: 560px) {
+    #balance   { top:86px; }
+    #dropBadge { top:126px; }
+  }
+
   #dropBadge.hot { border-color:#ffd24a; }
   #badgeInner { display:flex; align-items:center; gap:6px; transform-origin:center; }
   #badgeInner .cube {
