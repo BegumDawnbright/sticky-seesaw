@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sticky Seesaw</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#151226;
+    font-family:'Baloo 2', 'Trebuchet MS', system-ui, sans-serif; user-select:none; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  .hud { position:fixed; left:0; right:0; pointer-events:none; z-index:10; }
+  #top { top:0; padding:14px 16px; display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  #topLeft { display:flex; gap:9px; }
+
+  .chip {
+    background:rgba(20,16,40,.55); backdrop-filter:blur(8px);
+    border:2px solid rgba(255,255,255,.14); border-radius:16px;
+    padding:7px 13px; color:#fff; text-align:center; min-width:78px;
+    box-shadow:0 6px 0 rgba(0,0,0,.25);
+  }
+  .chip .lbl { font-size:10px; letter-spacing:.14em; opacity:.6; text-transform:uppercase; }
+  .chip .val { font-size:24px; font-weight:800; line-height:1.1; }
+
+  /* --- el kirlilik göstergesi --- */
+  #grimeChip { min-width:96px; }
+  .bar { margin-top:5px; height:9px; border-radius:6px; background:rgba(0,0,0,.45);
+         overflow:hidden; box-shadow:inset 0 2px 3px rgba(0,0,0,.5); }
+  #grimeFill { height:100%; width:0%; border-radius:6px;
+    background:linear-gradient(90deg,#ff9ec2,#c9b83a 55%,#7d8f3a);
+    transition:width .25s ease; }
+  #grimeChip.dirty { border-color:#b9c94a; }
+  #grimeChip.dirty .lbl { opacity:.95; color:#dbe86a; }
+
+  /* --- denge göstergesi --- */
+  #balance {
+    position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:11;
+    width:150px; height:16px; border-radius:10px; pointer-events:none;
+    background:rgba(20,16,40,.55); backdrop-filter:blur(8px);
+    border:2px solid rgba(255,255,255,.14); box-shadow:0 5px 0 rgba(0,0,0,.25);
+  }
+  #balZone { position:absolute; inset:2px; border-radius:7px;
+    background:linear-gradient(90deg,#ff5a6e 0%,#ffc93c 22%,#5ee07a 46%,#5ee07a 54%,#ffc93c 78%,#ff5a6e 100%);
+    opacity:.32; }
+  #balCenter { position:absolute; left:50%; top:1px; bottom:1px; width:2px;
+    margin-left:-1px; background:rgba(255,255,255,.45); border-radius:2px; }
+  #balNeedle {
+    position:absolute; top:-4px; width:8px; height:22px; margin-left:-4px;
+    border-radius:4px; background:#fff; box-shadow:0 0 10px rgba(255,255,255,.8);
+    left:50%; transition:background .2s;
+  }
+  #balance.danger { animation:balPulse .4s infinite alternate; }
+  @keyframes balPulse { from{box-shadow:0 5px 0 rgba(0,0,0,.25);} to{box-shadow:0 5px 0 rgba(0,0,0,.25), 0 0 20px #ff5a6e;} }
+  #balLbl { position:absolute; top:20px; left:0; right:0; text-align:center;
+    font-size:9px; letter-spacing:.18em; color:#fff; opacity:.5; text-transform:uppercase; }
+
+  #combo {
+    position:fixed; left:50%; top:30%; transform:translate(-50%,-50%) scale(.4);
+    font-size:52px; font-weight:900; color:#ffe27a; opacity:0; z-index:12;
+    text-shadow:0 5px 0 #b8600e, 0 0 26px rgba(255,190,60,.7); pointer-events:none;
+    text-align:center; width:100%;
+  }
+  #combo.pop { animation:pop .8s cubic-bezier(.2,1.6,.4,1) forwards; }
+  @keyframes pop {
+    0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(-8deg)}
+    25%{opacity:1;transform:translate(-50%,-50%) scale(1.15) rotate(3deg)}
+    60%{opacity:1;transform:translate(-50%,-50%) scale(1) rotate(0)}
+    100%{opacity:0;transform:translate(-50%,-80%) scale(.95)}
+  }
+
+  /* --- "sonraki hamlede kaç blok yağacak" rozeti: denge barının hemen altı --- */
+  #dropBadge {
+    position:fixed; top:58px; left:50%; transform:translateX(-50%);
+    z-index:11; pointer-events:none; opacity:0; transition:opacity .25s;
+    background:rgba(20,16,40,.55); backdrop-filter:blur(8px);
+    border:2px solid rgba(255,255,255,.14); border-radius:14px;
+    padding:5px 12px; box-shadow:0 5px 0 rgba(0,0,0,.25);
+  }
+  #dropBadge.hot { border-color:#ffd24a; }
+  #badgeInner { display:flex; align-items:center; gap:6px; transform-origin:center; }
+  #badgeInner .cube {
+    width:21px; height:21px; border-radius:6px;
+    background:linear-gradient(#d3d6ea,#969cba);
+    box-shadow:0 3px 0 rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.45);
+  }
+  #badgeInner .mult {
+    font-size:19px; font-weight:900; color:#fff;
+    text-shadow:0 2px 0 rgba(0,0,0,.55);
+  }
+  #dropBadge.hot #badgeInner .mult { color:#ffd24a; text-shadow:0 2px 0 #7a3d00, 0 0 12px rgba(255,190,60,.8); }
+  #badgeInner.pop { animation:badgePop .45s cubic-bezier(.2,1.8,.35,1); }
+  @keyframes badgePop {
+    0%   { transform:scale(1) }
+    30%  { transform:scale(1.6) rotate(-7deg) }
+    60%  { transform:scale(.9) rotate(2deg) }
+    100% { transform:scale(1) }
+  }
+
+  #hint { position:fixed; bottom:22px; left:0; right:0; text-align:center; color:#fff;
+    font-size:15px; font-weight:600; opacity:.5; z-index:10; pointer-events:none; padding:0 20px; }
+
+  #overlay {
+    position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:16px;
+    background:rgba(12,9,26,.8); backdrop-filter:blur(10px);
+    color:#fff; text-align:center; padding:26px;
+  }
+  #overlay.hide { display:none; }
+  #ovTitle { font-size:clamp(30px, 10vw, 44px); font-weight:900; letter-spacing:-1px; line-height:1.1;
+    text-shadow:0 5px 0 rgba(0,0,0,.3); }
+  #ovSub { font-size:16px; opacity:.78; max-width:350px; line-height:1.55; }
+  #ovBtn {
+    pointer-events:auto; cursor:pointer; margin-top:6px;
+    background:linear-gradient(#ffd24a,#f5a413); color:#5a2b00;
+    border:none; border-radius:20px; padding:15px 42px;
+    font-size:21px; font-weight:900; font-family:inherit;
+    box-shadow:0 7px 0 #b0670a, 0 12px 24px rgba(0,0,0,.4);
+    transition:transform .08s, box-shadow .08s;
+  }
+  #ovBtn:active { transform:translateY(5px); box-shadow:0 2px 0 #b0670a; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="hud" id="top">
+  <div id="topLeft">
+    <div class="chip"><div class="lbl">Skor</div><div class="val" id="score">0</div></div>
+    <div class="chip"><div class="lbl">Seviye</div><div class="val" id="level">1</div></div>
+  </div>
+  <div class="chip" id="grimeChip">
+    <div class="lbl">El</div>
+    <div class="bar"><div id="grimeFill"></div></div>
+  </div>
+</div>
+
+<div id="balance">
+  <div id="balZone"></div>
+  <div id="balCenter"></div>
+  <div id="balNeedle"></div>
+  <div id="balLbl">Denge</div>
+</div>
+
+<div id="dropBadge"><div id="badgeInner">
+  <div class="cube"></div><div class="mult">×1</div>
+</div></div>
+
+<div id="combo"></div>
+<div id="hint">Sütuna dokun → en üstteki bloğu kap</div>
+
+<div id="overlay">
+  <div id="ovTitle">STICKY SEESAW</div>
+  <div id="ovSub">
+    Yapışkan el sütunun tepesindeki bloğu kapar, başka sütuna bırakır.<br>
+    Aynı renkten <b>3+</b> blok yan yana gelince patlar.<br><br>
+    <b>Tahtanın tamamını temizle → sonraki seviye.</b><br>
+    Ama her hamlenden sonra tepeden rastgele bir sütuna yeni blok yağar —
+    yağmayı geride bırakman gerek.<br>
+    <b>Board bir mil üstünde duruyor.</b> Ağırlık bir tarafa yığılırsa eğilir —
+    çok eğilirse devrilir ve kaybedersin.<br>
+    <b>El kirlendikçe kontrolünü kaybeder</b> ve istemediğin blokları da kapar.
+    Patlatmak hem ağırlığı hem eli temizler — ya da <b>kovaya dokun</b>,
+    el tertemiz olsun. Ama kovanın bedeli <b>3 blok</b>.
+  </div>
+  <button id="ovBtn">BAŞLA</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+'use strict';
+
+/* ================================================================ config */
+const COLS = 6;
+const ROWS = 9;
+const CELL = 1.15;
+const START_ROWS = 5;
+
+/* --- seviye ile değişen ayarlar (applyLevelConfig) --- */
+let PALETTE = 4;                // aktif renk sayısı
+let DROPS_PER_MOVE = 1;         // her hamleden sonra yağan blok
+let GRIME_MUL = 1;              // elin kirlenme hızı
+let MAX_TORQUE = 24;            // bu tork = devrilme
+
+const BASE_MAX_TORQUE = 24;
+const MAX_TILT   = 0.25;        // radyan (~14°) — devrilme anındaki açı
+const TILT_EASE  = 0.06;
+
+/* --- yapışkanlık / kir --- */
+const STICK_BASE   = 0.20;      // temiz elde fazladan blok kapma ihtimali
+const GRIME_PER_GRAB = 0.11;
+const GRIME_PER_POP  = 0.30;
+const BUCKET_COST    = 3;       // kovaya girmenin bedeli: kaç blok yağar
+const BUCKET_POS     = { x: 5.0, y: -1.3, z: 0.95 };
+
+const COLORS = [
+  { hex: 0xff5a6e }, { hex: 0x4ec9ff }, { hex: 0x5ee07a },
+  { hex: 0xffc93c }, { hex: 0xb073ff }
+];
+
+/* ================================================================= state */
+let scene, camera, renderer, raycaster;
+let boardGroup, hand, armMesh, palm, gooMesh, gooMat;
+let columns = [], pickers = [], bucketPicker, bucketGroup, bucketSludge;
+let handWorld = null;           // doluysa el board lokali yerine dünya uzayında
+let pendingDrops = 1;           // sonraki hamlede yağacak blok (rozette gösterilir)
+let bucketHintShown = false;
+let held = [], heldFrom = -1;
+let busy = false, running = false, collapsing = false;
+
+let score = 0, cleared = 0, blocksLeft = 0, level = 1;
+let grime = 0;
+let tilt = 0, tiltVis = 0;      // -1..1 normalize edilmiş denge
+let shake = 0;
+let particles = [];
+
+const handLocal = { x: 0, y: 0 };      // el board'un LOKAL uzayında hareket eder
+const HAND_REST_Y = ROWS * CELL + 0.45;
+const HAND_Z = CELL * 0.35;
+const clock = new THREE.Clock();
+
+const GOO_CLEAN = new THREE.Color(0xff9ec2);
+const GOO_DIRTY = new THREE.Color(0x76852f);
+
+/* =============================================================== helpers */
+const ease = {
+  outCubic: t => 1 - Math.pow(1 - t, 3),
+  inCubic:  t => t * t * t,
+  outBack:  t => 1 + 2.2 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2),
+  inOut:    t => t < .5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2,
+  linear:   t => t
+};
+
+const tweens = [];
+function tween(dur, fn, easing) {
+  return new Promise(res => tweens.push({ t: 0, dur, fn, easing: easing || ease.inOut, res }));
+}
+function updateTweens(dt) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    tw.t += dt;
+    const k = Math.min(1, tw.t / tw.dur);
+    tw.fn(tw.easing(k), k);
+    if (k >= 1) { tweens.splice(i, 1); tw.res(); }
+  }
+}
+
+function colX(c) { return (c - (COLS - 1) / 2) * CELL; }
+function rowY(i) { return i * CELL + CELL / 2; }
+function lever(c) { return c - (COLS - 1) / 2; }
+
+function roundedBox(size, radius, seg) {
+  const g = new THREE.BoxGeometry(size, size, size, seg, seg, seg);
+  const p = g.attributes.position;
+  const h = size / 2, inner = h - radius;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    v.fromBufferAttribute(p, i);
+    const cx = THREE.MathUtils.clamp(v.x, -inner, inner);
+    const cy = THREE.MathUtils.clamp(v.y, -inner, inner);
+    const cz = THREE.MathUtils.clamp(v.z, -inner, inner);
+    const d = new THREE.Vector3(v.x - cx, v.y - cy, v.z - cz);
+    if (d.lengthSq() > 0) d.setLength(radius);
+    p.setXYZ(i, cx + d.x, cy + d.y, cz + d.z);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+let BLOCK_GEO, MATS;
+
+/* ================================================================= scene */
+function initScene() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0x191534, 24, 50);
+
+  camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 100);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  document.getElementById('app').appendChild(renderer.domElement);
+
+  raycaster = new THREE.Raycaster();
+
+  const bg = new THREE.Mesh(
+    new THREE.SphereGeometry(60, 24, 16),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide, depthWrite: false,
+      uniforms: { top: { value: new THREE.Color(0x3a2a6b) }, bot: { value: new THREE.Color(0x120f24) } },
+      vertexShader: 'varying float h; void main(){ h = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+      fragmentShader: 'varying float h; uniform vec3 top; uniform vec3 bot; void main(){ gl_FragColor = vec4(mix(bot, top, smoothstep(-0.35,0.75,h)), 1.0); }'
+    })
+  );
+  scene.add(bg);
+
+  scene.add(new THREE.HemisphereLight(0xcfd8ff, 0x2a1f4a, 0.42));
+  const key = new THREE.DirectionalLight(0xffffff, 1.45);
+  key.position.set(5, 14, 8);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  const d = 11;
+  key.shadow.camera.left = -d; key.shadow.camera.right = d;
+  key.shadow.camera.top = d;   key.shadow.camera.bottom = -d;
+  key.shadow.camera.near = 1;  key.shadow.camera.far = 42;
+  key.shadow.bias = -0.0015;
+  scene.add(key);
+  const rim = new THREE.DirectionalLight(0xff8ad0, 0.4);
+  rim.position.set(-7, 5, -6);
+  scene.add(rim);
+
+  boardGroup = new THREE.Group();   // mil: kendi orijini (tabanın ortası)
+  scene.add(boardGroup);
+
+  BLOCK_GEO = roundedBox(CELL * 0.88, CELL * 0.2, 5);
+  MATS = COLORS.map(c => new THREE.MeshStandardMaterial({
+    color: c.hex, roughness: 0.34, metalness: 0.0,
+    emissive: new THREE.Color(c.hex).multiplyScalar(0.05)
+  }));
+
+  buildBoardFrame();
+  buildPivot();
+  buildBucket();
+  buildHand();
+  buildPickers();
+
+  layoutCamera();
+  addEventListener('resize', onResize);
+  renderer.domElement.addEventListener('pointerdown', onPointerDown);
+}
+
+function buildBoardFrame() {
+  const w = COLS * CELL;
+
+  const base = new THREE.Mesh(roundedBox(1, 0.2, 4),
+    new THREE.MeshStandardMaterial({ color: 0x2b2350, roughness: 0.75 }));
+  base.scale.set(w + 0.9, 0.7, CELL + 0.9);
+  base.position.y = -0.35;
+  base.castShadow = true;
+  base.receiveShadow = true;
+  boardGroup.add(base);
+
+  const lineMat = new THREE.MeshStandardMaterial({
+    color: 0x4a3f7d, roughness: 0.9, transparent: true, opacity: 0.4 });
+  for (let c = 0; c <= COLS; c++) {
+    const l = new THREE.Mesh(new THREE.BoxGeometry(0.045, ROWS * CELL, 0.045), lineMat);
+    l.position.set(colX(0) - CELL / 2 + c * CELL, ROWS * CELL / 2, -CELL / 2 + 0.05);
+    boardGroup.add(l);
+  }
+
+  const back = new THREE.Mesh(
+    new THREE.PlaneGeometry(w + 0.6, ROWS * CELL + 0.4),
+    new THREE.MeshStandardMaterial({ color: 0x241d47, roughness: 1 }));
+  back.position.set(0, (ROWS * CELL) / 2, -CELL * 0.75);
+  back.receiveShadow = true;
+  boardGroup.add(back);
+}
+
+/* board'un üstünde durduğu mil — eğilmenin görsel gerekçesi (sahnede sabit) */
+function buildPivot() {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8e83c9, roughness: 0.4, metalness: 0.3 });
+
+  const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.5, 18), mat);
+  pin.rotation.x = Math.PI / 2;
+  pin.position.set(0, -0.35, CELL * 0.55);
+  scene.add(pin);
+
+  const post = new THREE.Mesh(roundedBox(1, 0.18, 4), mat);
+  post.scale.set(0.5, 1.6, 0.5);
+  post.position.set(0, -1.5, 0);
+  post.castShadow = true;
+  scene.add(post);
+
+  const foot = new THREE.Mesh(roundedBox(1, 0.2, 4),
+    new THREE.MeshStandardMaterial({ color: 0x5c52a0, roughness: 0.7 }));
+  foot.scale.set(3.4, 0.45, 1.8);
+  foot.position.set(0, -2.45, 0);
+  foot.receiveShadow = true;
+  foot.castShadow = true;
+  scene.add(foot);
+}
+
+/* elin silkelendiği kova — board eğilse de yerinde kalır */
+function buildBucket() {
+  bucketGroup = new THREE.Group();
+  bucketGroup.position.set(BUCKET_POS.x, BUCKET_POS.y, BUCKET_POS.z);
+  scene.add(bucketGroup);
+
+  const metal = new THREE.MeshStandardMaterial({ color: 0x9aa6d8, roughness: 0.35, metalness: 0.45 });
+
+  const pail = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.6, 1.05, 22, 1, true), metal);
+  pail.material.side = THREE.DoubleSide;
+  pail.castShadow = true;
+  bucketGroup.add(pail);
+
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.78, 0.075, 8, 24), metal);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.52;
+  bucketGroup.add(rim);
+
+  const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.6, 22), metal);
+  bottom.rotation.x = -Math.PI / 2;
+  bottom.position.y = -0.52;
+  bucketGroup.add(bottom);
+
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.05, 8, 20, Math.PI), metal);
+  handle.position.y = 0.52;
+  handle.rotation.y = Math.PI / 2;
+  bucketGroup.add(handle);
+
+  /* içindeki çamur — kir arttıkça yükselip koyulaşır */
+  bucketSludge = new THREE.Mesh(
+    new THREE.CircleGeometry(0.72, 22),
+    new THREE.MeshStandardMaterial({ color: 0x6f7c33, roughness: 0.25, metalness: 0.1 })
+  );
+  bucketSludge.rotation.x = -Math.PI / 2;
+  bucketSludge.position.y = 0.1;
+  bucketGroup.add(bucketSludge);
+
+  /* tıklama alanı — kovadan bolca geniş, parmakla kolay isabet için */
+  bucketPicker = new THREE.Mesh(
+    new THREE.BoxGeometry(2.3, 2.6, 1.6),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  bucketPicker.position.copy(bucketGroup.position);
+  scene.add(bucketPicker);
+}
+
+function buildHand() {
+  hand = new THREE.Group();
+
+  const skin = new THREE.MeshStandardMaterial({
+    color: 0xffd9a8, roughness: 0.55, emissive: 0x2a1405, emissiveIntensity: 0.35 });
+  gooMat = new THREE.MeshStandardMaterial({
+    color: GOO_CLEAN.clone(), roughness: 0.2, transparent: true, opacity: 0.92 });
+
+  palm = new THREE.Group();
+  hand.add(palm);
+
+  const p = new THREE.Mesh(roundedBox(1, 0.28, 5), skin);
+  p.scale.set(1.15, 0.5, 1.0);
+  p.castShadow = true;
+  palm.add(p);
+
+  const fingerGeo = roundedBox(1, 0.3, 4);
+  for (let i = 0; i < 4; i++) {
+    const f = new THREE.Mesh(fingerGeo, skin);
+    f.scale.set(0.2, 0.42, 0.24);
+    f.position.set(-0.42 + i * 0.28, -0.34, 0.16);
+    f.rotation.x = -0.25;
+    f.castShadow = true;
+    palm.add(f);
+  }
+  const thumb = new THREE.Mesh(fingerGeo, skin);
+  thumb.scale.set(0.22, 0.38, 0.26);
+  thumb.position.set(0.62, -0.18, -0.16);
+  thumb.rotation.z = -0.55;
+  thumb.castShadow = true;
+  palm.add(thumb);
+
+  gooMesh = new THREE.Mesh(roundedBox(1, 0.3, 4), gooMat);
+  gooMesh.scale.set(1.0, 0.16, 0.86);
+  gooMesh.position.y = -0.3;
+  palm.add(gooMesh);
+
+  const armGeo = new THREE.CylinderGeometry(0.26, 0.3, 1, 14, 1, true);
+  armGeo.translate(0, 0.5, 0);
+  armMesh = new THREE.Mesh(armGeo, new THREE.MeshStandardMaterial({ color: 0xffc98c, roughness: 0.6 }));
+  armMesh.castShadow = true;
+  scene.add(armMesh);
+
+  handLocal.x = 0;
+  handLocal.y = HAND_REST_Y;
+  hand.position.set(0, HAND_REST_Y, HAND_Z);
+  scene.add(hand);
+}
+
+/* sütun tıklama kutuları board ile birlikte eğilsin diye boardGroup içinde */
+function buildPickers() {
+  const geo = new THREE.BoxGeometry(CELL, ROWS * CELL + 3.5, CELL * 2.2);
+  const mat = new THREE.MeshBasicMaterial({ visible: false });
+  for (let c = 0; c < COLS; c++) {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(colX(c), (ROWS * CELL) / 2 - 0.6, 0);
+    m.userData.col = c;
+    boardGroup.add(m);
+    pickers.push(m);
+  }
+}
+
+function layoutCamera() {
+  const aspect = innerWidth / innerHeight;
+  const boardH = HAND_REST_Y + 1.6 + 3.4;     // mil ve ayak da kadraja girsin
+  /* board eğildiğinde üst köşeleri yana taşar — kadraj buna göre geniş olmalı */
+  const halfW = (COLS * CELL) / 2 + 0.6;
+  const boardW = 2 * (halfW * Math.cos(MAX_TILT) + (ROWS * CELL) * Math.sin(MAX_TILT)) + 0.8;
+  const vFov = THREE.MathUtils.degToRad(camera.fov);
+  const distV = (boardH / 2) / Math.tan(vFov / 2);
+  const hFov = 2 * Math.atan(Math.tan(vFov / 2) * aspect);
+  const distH = (boardW / 2) / Math.tan(hFov / 2);
+  const dist = Math.max(distV, distH) * 1.05;
+
+  const cy = boardH / 2 - 2.6;
+  camera.position.set(0, cy + dist * 0.15, dist * 0.99);
+  camera.lookAt(0, cy - 0.3, 0);
+}
+
+function onResize() {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  layoutCamera();
+}
+
+/* ================================================================ board */
+function makeBlock(colorIdx) {
+  const m = new THREE.Mesh(BLOCK_GEO, MATS[colorIdx]);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  boardGroup.add(m);
+  return { color: colorIdx, mesh: m };
+}
+
+/* Çözülebilirlik kuralı: her renkten blok sayısı 3'ün katı olmalı,
+   yoksa o renkten 1-2 blok artar ve asla patlayamaz. */
+function buildSolvableGrid() {
+  const total = COLS * START_ROWS;
+  const units = Math.floor(total / 3);
+  const usable = Math.min(PALETTE, units);
+
+  const unitsPer = new Array(usable).fill(1);
+  for (let i = usable; i < units; i++) unitsPer[(Math.random() * usable) | 0]++;
+
+  const pool = [];
+  unitsPer.forEach((u, color) => { for (let n = 0; n < u * 3; n++) pool.push(color); });
+  while (pool.length < total) pool.push((Math.random() * usable) | 0);
+
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    const t = pool[i]; pool[i] = pool[j]; pool[j] = t;
+  }
+
+  const grid = [];
+  for (let c = 0; c < COLS; c++) {
+    grid.push([]);
+    for (let i = 0; i < START_ROWS; i++) grid[c].push(pool[c * START_ROWS + i]);
+  }
+
+  /* hazır eşleşmeleri TAKAS ile boz — renk sayıları korunur */
+  for (let guard = 0; guard < 400; guard++) {
+    const gs = groupsOf(grid);
+    if (!gs.length) break;
+    for (const g of gs) {
+      const [c, i] = g[(Math.random() * g.length) | 0];
+      let c2, i2, tries = 0;
+      do { c2 = (Math.random() * COLS) | 0; i2 = (Math.random() * START_ROWS) | 0; tries++; }
+      while (tries < 60 && grid[c2][i2] === grid[c][i]);
+      const t = grid[c][i]; grid[c][i] = grid[c2][i2]; grid[c2][i2] = t;
+    }
+  }
+  return grid;
+}
+
+/* Seviye merdiveni — her seviye biraz daha hızlı yağar, daha çok renk içerir,
+   el daha çabuk kirlenir ve devrilme eşiği daralır. */
+function applyLevelConfig() {
+  PALETTE        = level >= 3 ? 5 : 4;
+  DROPS_PER_MOVE = 1 + Math.floor((level - 1) / 3);
+  GRIME_MUL      = 1 + (level - 1) * 0.1;
+  MAX_TORQUE     = Math.max(16, BASE_MAX_TORQUE - (level - 1));
+}
+
+function newBoard(keepProgress) {
+  columns.forEach(col => col.forEach(b => boardGroup.remove(b.mesh)));
+  held.forEach(b => hand.remove(b.mesh));
+  columns = []; held = []; heldFrom = -1;
+
+  const grid = buildSolvableGrid();
+  for (let c = 0; c < COLS; c++) {
+    const col = [];
+    for (let i = 0; i < START_ROWS; i++) {
+      const b = makeBlock(grid[c][i]);
+      b.mesh.position.set(colX(c), rowY(i) + 8, 0);
+      b.mesh.scale.setScalar(1);
+      col.push(b);
+    }
+    columns.push(col);
+  }
+
+  blocksLeft = COLS * START_ROWS;
+  if (!keepProgress) { score = 0; cleared = 0; level = 1; }
+  grime = 0;
+  tilt = 0; tiltVis = 0; collapsing = false;
+  boardGroup.rotation.z = 0;
+  handWorld = null;
+  handLocal.x = 0; handLocal.y = HAND_REST_Y;
+  updateHUD();
+}
+
+/* board tek tek dolar: alt satırdan başlayarak, soldan sağa, blok blok */
+async function dropInBoard() {
+  const jobs = [];
+  let n = 0;
+  for (let i = 0; i < START_ROWS; i++) {
+    for (let c = 0; c < COLS; c++) {
+      const b = columns[c][i];
+      if (!b) continue;
+      const from = b.mesh.position.y, to = rowY(i);
+      b.mesh.visible = false;
+      jobs.push(wait(n * 0.045).then(() => {
+        b.mesh.visible = true;
+        return tween(0.34, t => { b.mesh.position.y = from + (to - from) * t; }, ease.inCubic)
+          .then(() => squashBlock(b.mesh, 0.75));
+      }));
+      n++;
+    }
+  }
+  await Promise.all(jobs);
+}
+
+/* --- her hamleden sonra tepeden rastgele bir sütuna yeni blok düşer ---
+   Blok arzını yeniler (board asla kilitlenmez) ve ağırlığı rastgele bozar,
+   yani dengeyi sürekli sen toparlamak zorunda kalırsın. */
+function pickDropColumn() {
+  const open = [];
+  for (let c = 0; c < COLS; c++) if (columns[c].length < ROWS) open.push(c);
+  if (!open.length) return -1;
+  return open[(Math.random() * open.length) | 0];
+}
+
+async function dropNewBlock() {
+  const c = pickDropColumn();
+  if (c < 0) { endGame(false, 'overflow'); return; }
+
+  const b = makeBlock((Math.random() * PALETTE) | 0);
+  const i = columns[c].length;
+  columns[c].push(b);
+  blocksLeft++;
+
+  const to = rowY(i), from = to + 9;
+  b.mesh.position.set(colX(c), from, 0);
+  await tween(0.42, t => { b.mesh.position.y = from + (to - from) * t; }, ease.inCubic);
+  squashBlock(b.mesh, 0.85);
+  shake = Math.max(shake, 0.06);
+}
+
+/* Board bomboş kalırsa oyuncu hiçbir şey kapayamaz, dolayısıyla hamle de
+   yapamaz ve yeni blok hiç yağmaz — oyun kilitlenir. Seviye kurulumundan
+   sonra board'un asla boş kalmadığından emin ol. */
+async function ensureNotEmpty() {
+  for (let guard = 0; guard < 12 && blocksLeft <= 0; guard++) {
+    await dropNewBlock();
+    await resolveMatches();
+  }
+}
+
+/* 3+ bağlı aynı renk grupları (hem renk matrisi hem blok matrisi için) */
+function groupsOf(g) {
+  const colorAt = (c, i) => {
+    const v = g[c] && g[c][i];
+    if (v === undefined || v === null) return null;
+    return typeof v === 'number' ? v : v.color;
+  };
+  const seen = new Set(), out = [];
+  for (let c = 0; c < g.length; c++) {
+    for (let i = 0; i < g[c].length; i++) {
+      const k = c + ':' + i;
+      if (seen.has(k)) continue;
+      const color = colorAt(c, i);
+      if (color === null) continue;
+      seen.add(k);
+      const stack = [[c, i]], group = [];
+      while (stack.length) {
+        const [cc, ii] = stack.pop();
+        group.push([cc, ii]);
+        for (const [nc, ni] of [[cc-1,ii],[cc+1,ii],[cc,ii-1],[cc,ii+1]]) {
+          if (nc < 0 || nc >= g.length || ni < 0) continue;
+          const kk = nc + ':' + ni;
+          if (seen.has(kk) || colorAt(nc, ni) !== color) continue;
+          seen.add(kk);
+          stack.push([nc, ni]);
+        }
+      }
+      if (group.length >= 3) out.push(group);
+    }
+  }
+  return out;
+}
+
+/* ================================================================ denge */
+function computeTilt() {
+  let torque = 0;
+  for (let c = 0; c < COLS; c++) torque += (columns[c] ? columns[c].length : 0) * lever(c);
+  return THREE.MathUtils.clamp(torque / MAX_TORQUE, -1.6, 1.6);
+}
+
+/* board lokalinden dünya koordinatına (boardGroup sadece z ekseninde döner) */
+function boardToWorld(lx, ly) {
+  const a = boardGroup.rotation.z;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  return { x: lx * cos - ly * sin, y: lx * sin + ly * cos };
+}
+
+/* ================================================================ input */
+function onPointerDown(e) {
+  if (!running || busy) return;
+  const nx = (e.clientX / innerWidth) * 2 - 1;
+  const ny = -(e.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera({ x: nx, y: ny }, camera);
+
+  if (raycaster.intersectObject(bucketPicker, false).length) { cleanHand(); return; }
+
+  const hits = raycaster.intersectObjects(pickers, false);
+  if (!hits.length) return;
+  const c = hits[0].object.userData.col;
+  if (held.length) placeAt(c); else grabFrom(c);
+}
+
+function moveHandTo(x, y, dur, easing) {
+  const sx = handLocal.x, sy = handLocal.y;
+  return tween(dur, t => {
+    handLocal.x = sx + (x - sx) * t;
+    handLocal.y = sy + (y - sy) * t;
+  }, easing || ease.inOut);
+}
+
+/* elin dünya uzayındaki mevcut konumu (board eğimi uygulanmış) */
+function handWorldNow() {
+  if (handWorld) return { x: handWorld.x, y: handWorld.y, z: handWorld.z };
+  const w = boardToWorld(handLocal.x, handLocal.y);
+  w.z = HAND_Z;
+  return w;
+}
+
+function moveHandWorld(x, y, dur, easing, z) {
+  if (!handWorld) handWorld = handWorldNow();
+  const sx = handWorld.x, sy = handWorld.y, sz = handWorld.z;
+  const tz = (z === undefined) ? sz : z;
+  return tween(dur, t => {
+    handWorld.x = sx + (x - sx) * t;
+    handWorld.y = sy + (y - sy) * t;
+    handWorld.z = sz + (tz - sz) * t;
+  }, easing || ease.inOut);
+}
+
+/* --- kova: eli tamamen temizler, bedeli BUCKET_COST blok --- */
+async function cleanHand() {
+  if (held.length) { flash('ÖNCE BLOKLARI BIRAK', '#ff6b7a'); return; }
+  if (grime <= 0.02) { flash('EL ZATEN TEMİZ', '#9ad8ff'); return; }
+
+  busy = true;
+  await moveHandTo(handLocal.x, HAND_REST_Y, 0.18);
+
+  /* kovanın üstüne, sonra içine — derinlik de kovaya taşınır */
+  await moveHandWorld(BUCKET_POS.x, HAND_REST_Y, 0.3, null, BUCKET_POS.z);
+  await moveHandWorld(BUCKET_POS.x, BUCKET_POS.y + 0.3, 0.3, ease.inCubic, BUCKET_POS.z);
+
+  /* silkele — her sallanışta çamur sıçrar */
+  /* her silkelenişte rozet bir basamak tırmanır: ×1 → ×2 → ×3 */
+  const bx = handWorld.x;
+  for (let i = 0; i < BUCKET_COST; i++) {
+    spawnParticles(new THREE.Vector3(BUCKET_POS.x, BUCKET_POS.y + 0.7, BUCKET_POS.z), 0x76852f, scene);
+    squashPalm(0.5, 0.12);
+    setDropBadge(i + 1, true);
+    await tween(0.26, t => { handWorld.x = bx + Math.sin(t * Math.PI * 3) * 0.26; }, ease.linear);
+    handWorld.x = bx;
+    grime = Math.max(0, grime - 1 / BUCKET_COST);
+    updateHUD();
+    await wait(0.12);
+  }
+  grime = 0;
+  updateHUD();
+  flash('EL TEMİZ!', '#9ad8ff');
+
+  /* board'a geri dön ve lokal takibe geç */
+  await moveHandWorld(BUCKET_POS.x, HAND_REST_Y, 0.28, ease.outCubic, BUCKET_POS.z);
+  const back = boardToWorld(handLocal.x, HAND_REST_Y);
+  await moveHandWorld(back.x, back.y, 0.28, null, HAND_Z);
+  handWorld = null;
+  handLocal.y = HAND_REST_Y;
+
+  /* bedel: rozetin saydığı kadar blok yağar */
+  for (let n = 0; n < BUCKET_COST; n++) await dropNewBlock();
+  setDropBadge(DROPS_PER_MOVE, true);
+  await resolveMatches();
+
+  busy = false;
+  if (blocksLeft <= 0 && running) { nextLevel(); return; }
+  hint('Sütuna dokun → en üstteki bloğu kap');
+}
+
+async function nudgeHand(c) {
+  busy = true;
+  await moveHandTo(colX(c), HAND_REST_Y, 0.16);
+  busy = false;
+}
+
+/* ================================================================= grab */
+async function grabFrom(c) {
+  const col = columns[c];
+  if (!col.length) { await nudgeHand(c); return; }
+
+  busy = true;
+  const targetY = rowY(col.length - 1);
+
+  await moveHandTo(colX(c), HAND_REST_Y, 0.18);
+  await moveHandTo(colX(c), targetY + CELL * 0.72, 0.22, ease.inCubic);
+
+  /* --- yapışma: kir arttıkça el kontrolünü kaybeder --- */
+  const take = [col.pop()];
+  const maxExtra = 1 + Math.floor(grime * 2.99);      // temiz el: 1, simsiyah el: 3
+  const stickP = STICK_BASE + grime * 0.65;
+  let extra = 0;
+  while (col.length && extra < maxExtra) {
+    const below = col[col.length - 1];
+    const same = below.color === take[0].color;       // aynı renk her zaman yapışır
+    if (same || Math.random() < stickP) { take.unshift(col.pop()); extra++; }
+    else break;
+  }
+
+  held = take;
+  heldFrom = c;
+  grime = Math.min(1, grime + GRIME_PER_GRAB);
+
+  await squashPalm(0.6, 0.1);
+  take.forEach((b, i) => {
+    boardGroup.remove(b.mesh);
+    hand.add(b.mesh);
+    b.mesh.position.set(0, -0.82 - (take.length - 1 - i) * CELL, 0);
+    b.mesh.rotation.set(0, 0, 0);
+  });
+
+  if (take.length > 2)      flash('ELİN KİRLİ! x' + take.length, '#c9d94a');
+  else if (take.length > 1) flash('YAPIŞTI! x2', '#ff9ec2');
+
+  updateHUD();
+  await moveHandTo(colX(c), HAND_REST_Y, 0.3, ease.outBack);
+  busy = false;
+
+  /* el yarı yarıya kirlendiğinde kovayı bir kez tanıt */
+  if (!bucketHintShown && grime >= 0.5) {
+    bucketHintShown = true;
+    flash('ELİN KİRLENDİ — KOVAYA DOKUN', '#c9d94a');
+    hint('Kovaya dokun → el tertemiz, ama ' + BUCKET_COST + ' blok yağar');
+    return;
+  }
+  hint('Bırakmak için bir sütuna dokun');
+}
+
+/* ================================================================ place */
+async function placeAt(c) {
+  const col = columns[c];
+  if (col.length + held.length > ROWS) { await nudgeHand(c); flash('DOLU!', '#ff6b7a'); return; }
+
+  busy = true;
+  await moveHandTo(colX(c), HAND_REST_Y, 0.2);
+  const landY = Math.min(rowY(col.length + held.length - 1) + CELL * 0.72, HAND_REST_Y);
+  await moveHandTo(colX(c), landY, 0.2, ease.inCubic);
+
+  const baseIdx = col.length;
+  const dropped = held.slice();
+  held = []; heldFrom = -1;
+  dropped.forEach((b, i) => {
+    hand.remove(b.mesh);
+    boardGroup.add(b.mesh);
+    b.mesh.position.set(colX(c), rowY(baseIdx + i), 0);
+    b.mesh.rotation.set(0, 0, 0);
+    col.push(b);
+  });
+
+  await squashPalm(0.7, 0.08);
+  dropped.forEach(b => squashBlock(b.mesh));
+  await moveHandTo(colX(c), HAND_REST_Y, 0.26, ease.outBack);
+
+  await resolveMatches();
+
+  /* tahtanın tamamı temizlendi mi? — yeni bloklar yağmadan ÖNCE bakılır,
+     yoksa oyuncunun kazandığı an elinden alınmış olur */
+  if (blocksLeft <= 0 && running) { busy = false; nextLevel(); return; }
+
+  /* hamle tamamlandı → tepeden yeni blok(lar) yağar, eşleşme de yaratabilir */
+  if (running && !collapsing) {
+    for (let n = 0; n < DROPS_PER_MOVE; n++) await dropNewBlock();
+    await resolveMatches();
+    if (blocksLeft <= 0 && running) { busy = false; nextLevel(); return; }
+  }
+
+  busy = false;
+  if (running) hint('Sütuna dokun → en üstteki bloğu kap');
+}
+
+/* ============================================================= matching */
+async function resolveMatches() {
+  let chain = 0;
+  for (;;) {
+    const groups = groupsOf(columns);
+    if (!groups.length) break;
+    chain++;
+
+    let popped = 0;
+    const jobs = [], toRemove = [];
+    for (const g of groups) {
+      popped += g.length;
+      for (const [c, i] of g) { toRemove.push([c, i]); jobs.push(popBlock(columns[c][i])); }
+    }
+
+    const gain = popped * 10 * chain + (popped > 4 ? (popped - 4) * 25 : 0);
+    score += gain;
+    blocksLeft -= popped;
+    cleared += popped;
+    grime = Math.max(0, grime - GRIME_PER_POP);      // patlatmak eli temizler
+    shake = Math.min(0.5, 0.18 + popped * 0.02 + chain * 0.06);
+
+    if (chain > 1)          flash('COMBO x' + chain, '#ffe27a');
+    else if (popped >= 5)   flash('SÜPER! +' + gain, '#5ee07a');
+    updateHUD();
+
+    await Promise.all(jobs);
+
+    const byCol = {};
+    toRemove.forEach(([c, i]) => (byCol[c] = byCol[c] || []).push(i));
+    for (const c in byCol) {
+      byCol[c].sort((a, b) => b - a).forEach(i => {
+        boardGroup.remove(columns[c][i].mesh);
+        columns[c].splice(i, 1);
+      });
+    }
+    await applyGravity();
+  }
+}
+
+function popBlock(b) {
+  const wp = b.mesh.position.clone();
+  spawnParticles(wp, COLORS[b.color].hex);
+  return tween(0.22, t => {
+    const s = (1 + 0.45 * Math.sin(t * Math.PI)) * (1 - t);
+    b.mesh.scale.setScalar(Math.max(0.001, s));
+    b.mesh.rotation.z = t * 1.2;
+  }, ease.outCubic);
+}
+
+async function applyGravity() {
+  const jobs = [];
+  for (let c = 0; c < COLS; c++) {
+    columns[c].forEach((b, i) => {
+      const to = rowY(i);
+      if (Math.abs(b.mesh.position.y - to) < 0.001) return;
+      const from = b.mesh.position.y;
+      jobs.push(tween(0.26, t => { b.mesh.position.y = from + (to - from) * t; }, ease.inCubic)
+        .then(() => squashBlock(b.mesh, 0.7)));
+    });
+  }
+  if (jobs.length) await Promise.all(jobs);
+}
+
+/* ================================================================ juice */
+function squashBlock(mesh, amt) {
+  const a = amt || 0.55;
+  tween(0.26, t => {
+    const k = Math.sin(t * Math.PI) * (1 - t) * a;
+    mesh.scale.set(1 + k * 0.5, 1 - k, 1 + k * 0.5);
+  }, ease.linear);
+}
+
+function squashPalm(amt, dur) {
+  return tween(dur || 0.1, t => {
+    const k = Math.sin(t * Math.PI) * amt;
+    palm.scale.set(1 + k * 0.25, 1 - k * 0.45, 1 + k * 0.25);
+  }, ease.linear);
+}
+
+let particleGeo;
+function spawnParticles(pos, hex, parent) {
+  if (!particleGeo) particleGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+  const host = parent || boardGroup;
+  const mat = new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 0.5 });
+  for (let i = 0; i < 9; i++) {
+    const m = new THREE.Mesh(particleGeo, mat);
+    m.position.copy(pos);
+    host.add(m);
+    particles.push({
+      host: host,
+      mesh: m, life: 0, max: 0.55 + Math.random() * 0.3,
+      v: new THREE.Vector3((Math.random() - .5) * 6, Math.random() * 6 + 1.5, (Math.random() - .5) * 4),
+      rv: new THREE.Vector3((Math.random() - .5) * 12, (Math.random() - .5) * 12, (Math.random() - .5) * 12)
+    });
+  }
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life += dt;
+    p.v.y -= 22 * dt;
+    p.mesh.position.addScaledVector(p.v, dt);
+    p.mesh.rotation.x += p.rv.x * dt;
+    p.mesh.rotation.y += p.rv.y * dt;
+    p.mesh.scale.setScalar(Math.max(0.001, 1 - p.life / p.max));
+    if (p.life >= p.max) { (p.host || boardGroup).remove(p.mesh); particles.splice(i, 1); }
+  }
+}
+
+/* ================================================================== HUD */
+const $ = id => document.getElementById(id);
+
+function updateHUD() {
+  $('score').textContent = score;
+  $('level').textContent = level;
+  $('grimeFill').style.width = (grime * 100).toFixed(0) + '%';
+  $('grimeChip').classList.toggle('dirty', grime > 0.55);
+}
+
+function updateBalanceUI() {
+  const n = THREE.MathUtils.clamp(tiltVis, -1, 1);
+  $('balNeedle').style.left = (50 + n * 47) + '%';
+  const hot = Math.abs(n) > 0.7;
+  $('balNeedle').style.background = hot ? '#ff5a6e' : '#fff';
+  $('balance').classList.toggle('danger', hot);
+}
+
+let flashTimer;
+function flash(text, color) {
+  const el = $('combo');
+  el.textContent = text;
+  el.style.color = color || '#ffe27a';
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('pop'), 850);
+}
+
+function hint(t) { $('hint').textContent = t; }
+
+/* elin yanındaki rozet: sonraki hamlede kaç blok yağacak.
+   Kova kullanılırken ×1 → ×2 → ×3 tırmanır, böylece oyuncu 3 bloğun
+   kovadan geldiğini gözüyle görür. */
+function setDropBadge(n, pop) {
+  pendingDrops = n;
+  $('badgeInner').querySelector('.mult').textContent = '×' + n;
+  $('dropBadge').classList.toggle('hot', n > DROPS_PER_MOVE);
+  if (pop) {
+    const inner = $('badgeInner');
+    inner.classList.remove('pop');
+    void inner.offsetWidth;
+    inner.classList.add('pop');
+  }
+}
+
+function updateDropBadge() {
+  $('dropBadge').style.opacity = running ? 1 : 0;
+}
+
+/* ============================================================ end state */
+/* Tahtanın tamamı temizlendi → sonraki seviye. Skor ve ilerleme korunur,
+   el sıfırdan temiz başlar (ödül), board yeniden kurulur. */
+async function nextLevel() {
+  running = false;
+  const bonus = 300 * level;
+  score += bonus;
+  flash('SEVİYE ' + level + ' TEMİZ!  +' + bonus, '#5ee07a');
+  shake = 0.4;
+  updateHUD();
+
+  await wait(1.3);
+  level++;
+  applyLevelConfig();
+  newBoard(true);
+  setDropBadge(DROPS_PER_MOVE);
+  flash('SEVİYE ' + level, '#ffe27a');
+  await Promise.all([dropInBoard(), moveHandTo(0, HAND_REST_Y, 0.5, ease.outBack)]);
+  await resolveMatches();
+  await ensureNotEmpty();
+  running = true;
+  hint('Sütuna dokun → en üstteki bloğu kap');
+}
+
+async function collapseBoard() {
+  collapsing = true;
+  running = false;
+  const dir = tilt >= 0 ? 1 : -1;
+  const from = boardGroup.rotation.z;
+  shake = 0.45;
+
+  /* bloklar kayıp dökülür */
+  for (let c = 0; c < COLS; c++) {
+    for (const b of columns[c]) {
+      const bx = b.mesh.position.x, by = b.mesh.position.y;
+      const dx = dir * (1.5 + Math.random() * 5);
+      const dy = -(2 + Math.random() * 4);
+      const rz = (Math.random() - .5) * 6;
+      tween(0.85, t => {
+        b.mesh.position.x = bx + dx * t;
+        b.mesh.position.y = by + dy * t * t;
+        b.mesh.rotation.z = rz * t;
+      }, ease.linear);
+    }
+  }
+  await tween(0.85, t => { boardGroup.rotation.z = from + (dir * 1.15 - from) * t; }, ease.inCubic);
+  await wait(0.25);
+  endGame(false, 'tip');
+}
+const wait = s => tween(s, () => {});
+
+/* en iyi sonuç — tarayıcı engellerse sessizce bu koşunun sonucunu döndür */
+function saveBest() {
+  const cur = { level: level, score: score };
+  try {
+    const prev = JSON.parse(localStorage.getItem('stickySeesawBest') || 'null');
+    const best = (prev && (prev.score > cur.score)) ? prev : cur;
+    best.level = Math.max(best.level, cur.level);
+    localStorage.setItem('stickySeesawBest', JSON.stringify(best));
+    return best;
+  } catch (e) { return cur; }
+}
+
+function endGame(win, reason) {
+  running = false;
+  const best = saveBest();
+  $('ovTitle').textContent = reason === 'overflow' ? 'BOARD DOLDU' : 'DEVRİLDİ!';
+  $('ovTitle').style.color = '#ff6b7a';
+  $('ovSub').innerHTML =
+    (reason === 'tip'
+      ? 'Ağırlık tek tarafa yığıldı ve board devrildi.'
+      : 'Yağan bloklara yetişemedin, board tamamen doldu.') +
+    `<br>Seviye <b>${level}</b> · Skor <b>${score}</b>` +
+    `<br><span style="opacity:.65">En iyi: seviye <b>${best.level}</b> · skor <b>${best.score}</b></span>`;
+  $('ovBtn').textContent = 'TEKRAR OYNA';
+  $('overlay').classList.remove('hide');
+}
+
+/* ================================================================= loop */
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+  const t = clock.elapsedTime;
+
+  updateTweens(dt);
+  updateParticles(dt);
+
+  /* --- denge --- */
+  if (!collapsing) {
+    tilt = computeTilt();
+    tiltVis += (tilt - tiltVis) * TILT_EASE;
+    boardGroup.rotation.z = -tiltVis * MAX_TILT;
+    updateBalanceUI();
+    /* eşik HEDEF eğime bakar — yumuşatılmış değer hedefe asimptotik yaklaştığı
+       için ona bakmak board'u sonsuza kadar sınırda asılı bırakırdı */
+    if (running && Math.abs(tilt) >= 1) collapseBoard();
+  }
+
+  /* --- el board ile birlikte eğilir --- */
+  const w = handWorld || boardToWorld(handLocal.x, handLocal.y);
+  const breathe = (!busy && running) ? Math.sin(t * 2.2) * 0.05 : 0;
+  hand.position.set(w.x, w.y + breathe, handWorld ? handWorld.z : HAND_Z);
+  hand.rotation.z = (handWorld ? 0 : boardGroup.rotation.z) + (running ? Math.sin(t * 1.3) * 0.04 : 0);
+
+  /* --- kol --- */
+  const topY = ROWS * CELL + 6.5;
+  const len = Math.max(0.2, topY - hand.position.y);
+  armMesh.position.copy(hand.position);
+  const thin = THREE.MathUtils.clamp(1 - (len - 4) * 0.045, 0.55, 1.05);
+  armMesh.scale.set(thin, len, thin);
+
+  /* --- elin kiri --- */
+  gooMat.color.copy(GOO_CLEAN).lerp(GOO_DIRTY, grime);
+  const gooSwell = 1 + grime * 0.5;
+  gooMesh.scale.set(1.0 * gooSwell, 0.16 + grime * 0.16, 0.86 * gooSwell);
+
+  /* kova el kirlendikçe daha davetkâr görünsün */
+  bucketSludge.position.y = -0.2 + grime * 0.34;
+  bucketSludge.material.color.setHSL(0.22, 0.45, 0.16 + grime * 0.12);
+  bucketGroup.position.y = BUCKET_POS.y + (grime >= 0.5 ? Math.sin(t * 5) * 0.05 : 0);
+
+  updateDropBadge();
+
+  /* --- sarsıntı --- */
+  if (shake > 0.001) {
+    shake *= Math.pow(0.02, dt);
+    boardGroup.position.set((Math.random() - .5) * shake, (Math.random() - .5) * shake, 0);
+  } else boardGroup.position.set(0, 0, 0);
+
+  renderer.render(scene, camera);
+}
+
+/* ================================================================ start */
+async function startGame() {
+  $('overlay').classList.add('hide');
+  level = 1;
+  bucketHintShown = false;
+  applyLevelConfig();
+  newBoard(false);
+  setDropBadge(DROPS_PER_MOVE);
+  handLocal.y = HAND_REST_Y + 4;
+  await Promise.all([dropInBoard(), moveHandTo(0, HAND_REST_Y, 0.6, ease.outBack)]);
+  await resolveMatches();
+  await ensureNotEmpty();
+  running = true;
+  hint('Sütuna dokun → en üstteki bloğu kap');
+}
+
+initScene();
+animate();
+$('ovBtn').addEventListener('click', startGame);
+
+})();
+</script>
+</body>
+</html>
